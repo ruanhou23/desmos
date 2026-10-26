@@ -1,0 +1,1956 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desmos Bézier Renderer</title>
+    <link rel="icon" href="https://www.desmos.com/assets/img/apps/graphing/favicon.ico">
+    <script src="https://www.desmos.com/api/v1.8/calculator.js?apiKey={{ api_key }}"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-glass: rgba(30, 41, 59, 0.85);
+            --border-color: rgba(255, 255, 255, 0.12);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-primary: #2563eb;
+            --accent-hover: #1d4ed8;
+            --accent-active: #60a5fa;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Top Header Navigation */
+        header {
+            height: 56px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 50;
+            flex-shrink: 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #38bdf8, #2563eb);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(56, 189, 248, 0.35);
+        }
+
+        .brand-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: #fff;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+        }
+
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .brand-title {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+            color: #fff;
+        }
+
+        .brand-sub {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* HUD Live Indicators */
+        .hud-stats {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-pill {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid var(--border-color);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
+        .stat-val {
+            font-weight: 600;
+            color: var(--accent-blue);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .status-dot.busy {
+            background: var(--warning);
+            box-shadow: 0 0 8px var(--warning);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
+        }
+
+        /* Header Actions */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            border-color: #3b82f6;
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+
+        .btn-icon-only {
+            padding: 6px;
+            width: 32px;
+            height: 32px;
+            justify-content: center;
+        }
+
+        .color-badge {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+            display: inline-block;
+        }
+
+        /* Calculator Viewport */
+        #calc-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 56px);
+            background: #ffffff;
+        }
+
+        #calculator {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Floating Live Sketch HUD Bar */
+        .sketch-dock {
+            position: absolute;
+            bottom: 86px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(245, 158, 11, 0.5);
+            border-radius: var(--radius-lg);
+            padding: 8px 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 12px rgba(245, 158, 11, 0.25);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            z-index: 45;
+            width: min(840px, 94vw);
+            animation: slideUp 0.2s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { transform: translate(-50%, 20px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        /* Floating Player Control Dock */
+        .player-dock {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 10px 18px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 40;
+            width: min(840px, 94vw);
+            transition: all 0.2s ease;
+        }
+
+        .player-dock:hover {
+            border-color: rgba(255, 255, 255, 0.22);
+            box-shadow: 0 16px 32px -6px rgba(0, 0, 0, 0.6);
+        }
+
+        .controls-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .ctrl-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.12s ease;
+        }
+
+        .ctrl-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+
+        .ctrl-btn.active {
+            color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.15);
+        }
+
+        .ctrl-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        .play-btn {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, #38bdf8, #2563eb);
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.45);
+        }
+
+        .play-btn:hover {
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            transform: scale(1.05);
+        }
+
+        .play-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: #fff;
+        }
+
+        /* Timeline Scrubber */
+        .timeline-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 140px;
+        }
+
+        .timeline-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .timeline-current {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .scrubber-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.15);
+            outline: none;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .scrubber-slider:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .scrubber-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+            transition: transform 0.1s;
+        }
+
+        .scrubber-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Right player options */
+        .dock-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .fps-select {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .fps-select:hover {
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .auto-dl-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+
+        .auto-dl-label input {
+            accent-color: var(--accent-blue);
+        }
+
+        /* Modal Dialogs */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: min(520px, 92vw);
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            transform: scale(0.96);
+            transition: transform 0.2s ease;
+        }
+
+        .modal-overlay.open .modal-card {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+        }
+
+        .modal-close:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Upload Dropzone */
+        .dropzone {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-md);
+            padding: 32px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: rgba(15, 23, 42, 0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dropzone:hover, .dropzone.dragover {
+            border-color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.08);
+        }
+
+        .dropzone-icon svg {
+            width: 44px;
+            height: 44px;
+            stroke: var(--accent-blue);
+            fill: none;
+            stroke-width: 1.8;
+        }
+
+        .dropzone-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .dropzone-hint {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .form-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .form-select, .form-input {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .form-select:focus, .form-input:focus {
+            border-color: var(--accent-blue);
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        .checkbox-row input {
+            accent-color: var(--accent-blue);
+            width: 16px;
+            height: 16px;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #38bdf8, #2563eb);
+            transition: width 0.3s ease;
+        }
+
+        /* Color Popover */
+        .color-popover {
+            position: absolute;
+            top: 60px;
+            right: 140px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 12px;
+            box-shadow: var(--shadow);
+            z-index: 60;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            width: 220px;
+        }
+
+        .color-popover.open {
+            display: flex;
+        }
+
+        .swatches-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .swatch-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: transform 0.1s, border-color 0.1s;
+        }
+
+        .swatch-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .swatch-btn.selected {
+            border-color: #fff;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 200;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            padding: 10px 16px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            color: #fff;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.25s ease-out;
+            pointer-events: auto;
+        }
+
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.info { border-left: 4px solid var(--accent-blue); }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Tooltip help */
+        [title] {
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M4 18 C 8 4, 16 20, 20 6" />
+                </svg>
+            </div>
+            <div class="brand-text">
+                <span class="brand-title">Desmos Bézier Renderer</span>
+                <span class="brand-sub">Rotoscoping Math Engine</span>
+            </div>
+        </div>
+
+        <div class="hud-stats">
+            <div class="stat-pill" title="Frame hiện tại và tổng số frames">
+                <span class="stat-label">Frame:</span>
+                <span class="stat-val" id="hud-frame">1 / {{ total_frames }}</span>
+            </div>
+            <div class="stat-pill" title="Số đường cong Bézier toán học trong frame này">
+                <span class="stat-label">Curves:</span>
+                <span class="stat-val" id="hud-curves">...</span>
+            </div>
+            <div class="stat-pill" title="Kích thước toạ độ Desmos">
+                <span class="stat-label">Bounds:</span>
+                <span class="stat-val" id="hud-size">{{ width }} × {{ height }}</span>
+            </div>
+            <div class="stat-pill">
+                <div class="status-dot" id="status-dot"></div>
+                <span class="stat-val" id="hud-status" style="color: #fff; font-size: 11px;">Sẵn sàng</span>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <button class="btn btn-primary" id="btn-open-upload">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                Tải ảnh / Video
+            </button>
+
+            <button class="btn btn-primary" id="btn-toggle-sketch" style="background: linear-gradient(135deg, #f59e0b, #d97706); border-color: #fbbf24;" title="Chế độ Hoạt Họa: Vẽ lại từng phương trình như con người đang vẽ thủ công mang tính trình diễn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+                    <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+                    <path d="M2 2l7.586 7.586"></path>
+                    <circle cx="11" cy="11" r="2"></circle>
+                </svg>
+                🎨 Hoạt họa vẽ tay
+            </button>
+
+            <button class="btn btn-primary" id="btn-open-export" style="background: linear-gradient(135deg, #10b981, #059669); border-color: #34d399;" title="Xuất phương trình toạ độ để dán và vẽ trên trang chính Desmos.com">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                </svg>
+                Xuất toạ độ Desmos
+            </button>
+
+            <button class="btn" id="btn-color-picker" title="Đổi màu đường cong Bézier">
+                <span class="color-badge" id="color-badge" style="background-color: {{ default_color }};"></span>
+                Màu nét
+            </button>
+
+            <button class="btn" id="btn-open-settings" title="Tuỳ chỉnh lưới và thuật toán nhận diện">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                Cài đặt
+            </button>
+
+            <button class="btn" id="btn-export-shot" title="Lưu ảnh chụp độ phân giải cao">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                </svg>
+                Xuất ảnh
+            </button>
+
+            <button class="btn btn-icon-only" id="btn-toggle-sidebar" title="Ẩn/Hiện danh sách công thức Desmos">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="3" x2="9" y2="21" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Color Swatches Popover -->
+    <div class="color-popover" id="color-popover">
+        <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">BẢNG MÀU ĐƯỜNG NÉT</div>
+        <div class="swatches-grid">
+            <button class="swatch-btn selected" style="background: #2464b4;" data-color="#2464b4" title="Desmos Blue"></button>
+            <button class="swatch-btn" style="background: #00f0ff;" data-color="#00f0ff" title="Cyber Cyan"></button>
+            <button class="swatch-btn" style="background: #e11d48;" data-color="#e11d48" title="Crimson"></button>
+            <button class="swatch-btn" style="background: #10b981;" data-color="#10b981" title="Emerald"></button>
+            <button class="swatch-btn" style="background: #8b5cf6;" data-color="#8b5cf6" title="Violet"></button>
+            <button class="swatch-btn" style="background: #f59e0b;" data-color="#f59e0b" title="Amber"></button>
+            <button class="swatch-btn" style="background: #0f172a;" data-color="#0f172a" title="Pitch Black"></button>
+            <button class="swatch-btn" style="background: #ffffff; border: 1px solid #ccc;" data-color="#ffffff" title="White"></button>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <label style="font-size: 11px; color: var(--text-secondary);">Màu tuỳ chọn:</label>
+            <input type="color" id="custom-color-input" value="{{ default_color }}" style="width: 48px; height: 26px; border: none; background: none; cursor: pointer;">
+        </div>
+    </div>
+
+    <!-- Main Desmos Calculator Container -->
+    <main id="calc-container">
+        <div id="calculator"></div>
+
+        <!-- Floating Live Sketch HUD Bar -->
+        <div class="sketch-dock" id="sketch-dock" style="display:none;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:28px;height:28px;background:rgba(245,158,11,0.2);border:1px solid #f59e0b;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#f59e0b;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+                        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <div style="font-size:12px;font-weight:700;color:#fff;">Trình diễn vẽ tay</div>
+                    <div style="font-size:11px;color:var(--text-secondary);" id="sketch-progress-text">Đang chuẩn bị nét vẽ...</div>
+                </div>
+            </div>
+
+            <!-- Mini Progress bar -->
+            <div style="flex:1;max-width:200px;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+                <div id="sketch-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);transition:width 0.1s;"></div>
+            </div>
+
+            <!-- Formula live tracker -->
+            <div style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:3px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:10px;color:var(--accent-blue);" id="sketch-formula-preview" title="Phương trình đang được gõ vẽ trực tiếp">
+                Đang chờ vẽ...
+            </div>
+
+            <!-- Speed selector -->
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:11px;color:var(--text-secondary);">Tốc độ:</span>
+                <select class="fps-select" id="sketch-speed-select">
+                    <option value="1">Tỉ mỉ (1 nét/lần)</option>
+                    <option value="5">Vừa (5 nét/lần)</option>
+                    <option value="15" selected>Nhanh (15 nét/lần)</option>
+                    <option value="40">Siêu tốc (40 nét/lần)</option>
+                </select>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:6px;">
+                <button class="btn" id="btn-sketch-pause" style="padding:4px 8px;font-size:11px;">⏸ Tạm dừng</button>
+                <button class="btn" id="btn-sketch-stop" style="padding:4px 8px;font-size:11px;color:var(--warning);">⏹ Hiện hết</button>
+                <button class="btn" id="btn-sketch-restart" style="padding:4px 8px;font-size:11px;color:var(--accent-blue);">↺ Vẽ lại</button>
+                <button class="modal-close" id="btn-sketch-close" style="font-size:16px;">&times;</button>
+            </div>
+        </div>
+
+        <!-- Floating Player Control Dock -->
+        <div class="player-dock">
+            <!-- Navigation controls -->
+            <div class="controls-group">
+                <button class="ctrl-btn" id="btn-first" title="Về Frame đầu tiên (Home)">
+                    <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn-prev" title="Frame trước (Phím Mũi tên trái)">
+                    <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                </button>
+                <button class="ctrl-btn play-btn" id="btn-play" title="Phát / Tạm dừng (Phím Space)">
+                    <svg id="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <svg id="pause-icon" viewBox="0 0 24 24" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn-next" title="Frame kế tiếp (Phím Mũi tên phải)">
+                    <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn-last" title="Tới Frame cuối cùng (End)">
+                    <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn-loop" title="Chế độ Lặp lại (Loop)">
+                    <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+                </button>
+            </div>
+
+            <!-- Timeline Scrubber -->
+            <div class="timeline-section">
+                <div class="timeline-labels">
+                    <span class="timeline-current" id="lbl-current-frame">Frame 1</span>
+                    <span id="lbl-total-frame">/ {{ total_frames }}</span>
+                </div>
+                <input type="range" class="scrubber-slider" id="frame-slider" min="1" max="{{ total_frames }}" value="1" step="1">
+            </div>
+
+            <!-- Right settings -->
+            <div class="dock-right">
+                <select class="fps-select" id="fps-select" title="Tốc độ khung hình (FPS)">
+                    <option value="1">1 FPS</option>
+                    <option value="2">2 FPS</option>
+                    <option value="5">5 FPS</option>
+                    <option value="10" selected>10 FPS</option>
+                    <option value="15">15 FPS</option>
+                    <option value="24">24 FPS</option>
+                </select>
+
+                <label class="auto-dl-label" title="Tự động lưu ảnh chụp mỗi khi chuyển frame">
+                    <input type="checkbox" id="chk-auto-dl" {% if download_images %}checked{% endif %}>
+                    Tự tải ảnh
+                </label>
+
+                <button class="ctrl-btn" id="btn-fullscreen" title="Toàn màn hình">
+                    <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="upload-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">Tải lên hình ảnh hoặc Video</div>
+                <button class="modal-close" id="btn-close-upload">&times;</button>
+            </div>
+
+            <div class="dropzone" id="dropzone">
+                <input type="file" id="file-input" accept="image/*,video/*,.gif" style="display:none;">
+                <div class="dropzone-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                </div>
+                <div class="dropzone-title">Kéo & thả tập tin vào đây hoặc bấm để chọn</div>
+                <div class="dropzone-hint">Hỗ trợ ảnh (PNG, JPG, WebP) hoặc video (MP4, GIF, WebM)</div>
+            </div>
+
+            <div class="form-row">
+                <label class="form-label">
+                    <span>Số frame tối đa (nếu là Video):</span>
+                    <span id="lbl-max-frames" style="color:var(--accent-blue)">60 frames</span>
+                </label>
+                <input type="range" class="scrubber-slider" id="input-max-frames" min="10" max="240" step="10" value="60">
+            </div>
+
+            <div class="form-row">
+                <label class="form-label">Độ phân giải chiều rộng (Khuyến nghị 480px để Desmos mượt):</label>
+                <select class="form-select" id="select-target-width">
+                    <option value="360">360px (Cực nhanh, siêu nhẹ)</option>
+                    <option value="480" selected>480px (Cân bằng tối ưu - Khuyến nghị)</option>
+                    <option value="640">640px (Độ chi tiết cao hơn)</option>
+                    <option value="0">Giữ nguyên kích thước gốc</option>
+                </select>
+            </div>
+
+            <div class="progress-bar-container" id="upload-progress-container">
+                <div class="progress-bar-fill" id="upload-progress-bar"></div>
+            </div>
+
+            <div id="upload-status-text" style="font-size: 12px; color: var(--text-secondary); text-align: center;"></div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                <button class="btn" id="btn-reset-default" style="color: var(--warning);" title="Khôi phục lại chuỗi frame mẫu mặc định ban đầu">
+                    ↺ Khôi phục ảnh mẫu
+                </button>
+                <button class="btn btn-primary" id="btn-submit-upload" disabled>
+                    Bắt đầu chuyển đổi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title">Cài đặt hiển thị & Thuật toán</div>
+                <button class="modal-close" id="btn-close-settings">&times;</button>
+            </div>
+
+            <div class="form-row">
+                <label class="checkbox-row">
+                    <input type="checkbox" id="set-show-grid" {% if show_grid %}checked{% endif %}>
+                    <span>Hiển thị Lưới toạ độ Desmos (Grid) & Trục số (Axes)</span>
+                </label>
+            </div>
+
+            <div class="form-row">
+                <label class="checkbox-row">
+                    <input type="checkbox" id="set-bilateral">
+                    <span>Bộ lọc Bilateral (Làm mịn và giảm bớt các nét thừa không cần thiết)</span>
+                </label>
+            </div>
+
+            <div class="form-row">
+                <label class="checkbox-row">
+                    <input type="checkbox" id="set-l2-grad">
+                    <span>L2 Gradient (Tăng độ chính xác đạo hàm Canny - Tăng tốc độ render)</span>
+                </label>
+            </div>
+
+            <div class="form-row">
+                <label class="form-label">
+                    <span>Ngưỡng Canny dưới (Canny Low Threshold):</span>
+                    <span id="lbl-canny-low">30</span>
+                </label>
+                <input type="range" class="scrubber-slider" id="set-canny-low" min="5" max="150" value="30">
+            </div>
+
+            <div class="form-row">
+                <label class="form-label">
+                    <span>Ngưỡng Canny trên (Canny High Threshold):</span>
+                    <span id="lbl-canny-high">200</span>
+                </label>
+                <input type="range" class="scrubber-slider" id="set-canny-high" min="50" max="300" value="200">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+                <button class="btn" id="btn-cancel-settings">Đóng</button>
+                <button class="btn btn-primary" id="btn-save-settings">Lưu & Áp dụng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Equations Modal -->
+    <div class="modal-overlay" id="export-modal">
+        <div class="modal-card" style="width: min(680px, 94vw);">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title">📐 Xuất phương trình đồ thị cho Desmos.com</div>
+                    <div style="font-size: 12px; color: var(--accent-blue); margin-top: 2px;" id="export-meta-info">
+                        Đang tải thông số phương trình...
+                    </div>
+                </div>
+                <button class="modal-close" id="btn-close-export">&times;</button>
+            </div>
+
+            <!-- Tab 1: Direct 1-Click Injection Script -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
+                        🚀 Cách 1: Dán trực tiếp vào Desmos.com (Khuyên dùng - 1 Click)
+                    </span>
+                    <span style="font-size: 11px; background: rgba(16, 185, 129, 0.2); color: #34d399; padding: 2px 8px; border-radius: 12px; font-weight: 600;">
+                        Chính xác 100%
+                    </span>
+                </div>
+
+                <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+                    Mã script này tự động gom toàn bộ phương trình vào một Thư mục (Folder) mang tên <strong style="color:#fff;">"Bézier Art"</strong> và căn chỉnh khung toạ độ Desmos hoàn hảo, không làm đơ trình duyệt.
+                </p>
+
+                <div style="background: #090d16; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; color: #94a3b8; max-height: 80px; overflow-y: hidden; text-overflow: ellipsis; white-space: pre-wrap;" id="export-script-preview">
+                    (function() { Calc.setState(...); })();
+                </div>
+
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                    <button class="btn btn-primary" id="btn-copy-desmos-script" style="background: linear-gradient(135deg, #10b981, #059669); border-color: #34d399; font-weight: 600; padding: 8px 16px;">
+                        📋 Sao chép mã vẽ (Copy Script)
+                    </button>
+                    <a class="btn" id="btn-open-desmos-tab" href="https://www.desmos.com/calculator" target="_blank" rel="noopener noreferrer" style="color: var(--accent-blue); border-color: rgba(56, 189, 248, 0.4);">
+                        ↗ Mở Desmos.com trong tab mới
+                    </a>
+                    <a class="btn" id="btn-download-js" href="#" download="desmos_inject.js">
+                        💾 Tải file .js
+                    </a>
+                </div>
+
+                <!-- 3 Simple Steps Guide -->
+                <div style="margin-top: 6px; padding: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; font-size: 11px; color: var(--text-secondary); line-height: 1.6;">
+                    <strong style="color: #fff;">📌 Hướng dẫn 3 bước thực hiện trên Desmos.com:</strong><br>
+                    1. Bấm nút <strong>"Mở Desmos.com trong tab mới"</strong> ở trên.<br>
+                    2. Nhấn phím <kbd style="background:#1e293b;padding:1px 5px;border-radius:4px;border:1px solid #475569;color:#fff;">F12</kbd> (hoặc <kbd style="background:#1e293b;padding:1px 5px;border-radius:4px;border:1px solid #475569;color:#fff;">Ctrl + Shift + J</kbd>, trên Mac: <kbd style="background:#1e293b;padding:1px 5px;border-radius:4px;border:1px solid #475569;color:#fff;">Cmd + Option + J</kbd>) để mở tab <strong>Console</strong>.<br>
+                    3. Bấm <strong>"Sao chép mã vẽ"</strong>, dán (<kbd style="background:#1e293b;padding:1px 5px;border-radius:4px;border:1px solid #475569;color:#fff;">Ctrl + V</kbd>) vào Console và nhấn <kbd style="background:#1e293b;padding:1px 5px;border-radius:4px;border:1px solid #475569;color:#fff;">Enter</kbd>. Bức vẽ Bézier sẽ xuất hiện ngay lập tức!
+                </div>
+            </div>
+
+            <!-- Tab 1B: Progressive Live-Sketch Script for Desmos.com -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(245, 158, 11, 0.5); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
+                        🎭 Cách 1B: Trình diễn "Hoạt họa vẽ tay" trên Desmos.com (Mang tính biểu diễn)
+                    </span>
+                    <span style="font-size: 11px; background: rgba(245, 158, 11, 0.2); color: #fbbf24; padding: 2px 8px; border-radius: 12px; font-weight: 600;">
+                        Hiệu ứng vẽ tay sống động
+                    </span>
+                </div>
+
+                <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+                    Khi dán mã này vào Console của Desmos.com, trang Desmos sẽ <strong style="color:#fbbf24;">tự động vẽ từng nét một kèm điểm bút phát sáng di chuyển</strong> như có hoạ sĩ đang phác hoạ trực tiếp!
+                </p>
+
+                <div style="background: #090d16; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; color: #fbbf24; max-height: 80px; overflow-y: hidden; text-overflow: ellipsis; white-space: pre-wrap;" id="export-live-script-preview">
+                    (function() { // Live sketch animation for Desmos.com ... })();
+                </div>
+
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                    <button class="btn btn-primary" id="btn-copy-live-script" style="background: linear-gradient(135deg, #f59e0b, #d97706); border-color: #fbbf24; font-weight: 600; padding: 8px 16px;">
+                        📋 Sao chép mã Hoạt họa (Live-Draw Script)
+                    </button>
+                    <a class="btn" id="btn-download-live-js" href="#" download="desmos_live_sketch.js" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);">
+                        💾 Tải file live_sketch.js
+                    </a>
+                </div>
+            </div>
+
+            <!-- Tab 2: Raw LaTeX Equations & State JSON -->
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 13px; font-weight: 700; color: #fff;">
+                        📝 Cách 2: Danh sách phương trình LaTeX thuần
+                    </span>
+                    <span style="font-size: 11px; color: var(--text-secondary);" id="export-lines-count">
+                        0 phương trình
+                    </span>
+                </div>
+
+                <textarea id="export-latex-textarea" readonly style="width: 100%; height: 100px; background: #090d16; border: 1px solid var(--border-color); border-radius: 8px; color: #38bdf8; font-family: monospace; font-size: 11px; padding: 8px; resize: none; outline: none;"></textarea>
+
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="btn" id="btn-copy-latex-text">
+                        📋 Sao chép danh sách LaTeX
+                    </button>
+                    <a class="btn" id="btn-download-txt" href="#" download="desmos_equations.txt">
+                        💾 Tải file equations.txt
+                    </a>
+                    <a class="btn" id="btn-download-state-json" href="#" download="desmos_state.json">
+                        💾 Tải Desmos State (.json)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // State variables
+        let totalFrames = {{ total_frames }};
+        let currentFrame = 1;
+        let isPlaying = false;
+        let isLooping = true;
+        let playInterval = null;
+        let currentColor = "{{ default_color }}";
+        let isAutoDownload = {{ download_images|tojson }};
+        let selectedUploadFile = null;
+        let showExpressionsSidebar = false;
+
+        // Desmos Instance
+        const elt = document.getElementById('calculator');
+        const calculator = Desmos.GraphingCalculator(elt, {
+            expressions: showExpressionsSidebar,
+            settingsMenu: false,
+            zoomButtons: true,
+            keypad: false
+        });
+
+        // Frame Client Memory Cache for instant scrubbing
+        const clientCache = new Map();
+
+        // UI Element References
+        const hudFrame = document.getElementById('hud-frame');
+        const hudCurves = document.getElementById('hud-curves');
+        const hudSize = document.getElementById('hud-size');
+        const hudStatus = document.getElementById('hud-status');
+        const statusDot = document.getElementById('status-dot');
+
+        const btnPlay = document.getElementById('btn-play');
+        const playIcon = document.getElementById('play-icon');
+        const pauseIcon = document.getElementById('pause-icon');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const btnFirst = document.getElementById('btn-first');
+        const btnLast = document.getElementById('btn-last');
+        const btnLoop = document.getElementById('btn-loop');
+        const frameSlider = document.getElementById('frame-slider');
+        const lblCurrentFrame = document.getElementById('lbl-current-frame');
+        const lblTotalFrame = document.getElementById('lbl-total-frame');
+        const fpsSelect = document.getElementById('fps-select');
+        const chkAutoDl = document.getElementById('chk-auto-dl');
+
+        // Initial setup for Graph Bounds and Grid
+        function applyGraphBounds(w, h, showGrid) {
+            calculator.updateSettings({
+                showGrid: showGrid,
+                showXAxis: showGrid,
+                showYAxis: showGrid
+            });
+            calculator.setMathBounds({
+                left: 0,
+                right: w,
+                bottom: 0,
+                top: h
+            });
+        }
+
+        applyGraphBounds({{ width }}, {{ height }}, {{ show_grid|tojson }});
+
+        // Toast notification helper
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Fetch Frame Data with caching
+        async function fetchFrame(frameNum) {
+            if (clientCache.has(frameNum)) {
+                return clientCache.get(frameNum);
+            }
+            try {
+                const res = await fetch(`/api/frame/${frameNum}?color=${encodeURIComponent(currentColor)}`);
+                if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                const data = await res.json();
+                if (data.success && data.result) {
+                    clientCache.set(frameNum, data);
+                    return data;
+                }
+            } catch (err) {
+                console.error(`Failed to fetch frame ${frameNum}:`, err);
+            }
+            return null;
+        }
+
+        // Render Frame on Desmos Calculator
+        async function renderFrame(frameNum) {
+            currentFrame = frameNum;
+            hudFrame.textContent = `${frameNum} / ${totalFrames}`;
+            lblCurrentFrame.textContent = `Frame ${frameNum}`;
+            frameSlider.value = frameNum;
+
+            statusDot.className = 'status-dot busy';
+            hudStatus.textContent = isPlaying ? `Đang phát (${fpsSelect.value} FPS)` : 'Đang vẽ...';
+
+            const data = await fetchFrame(frameNum);
+            if (!data) {
+                statusDot.className = 'status-dot';
+                hudStatus.textContent = 'Lỗi';
+                return;
+            }
+
+            // Update stats
+            hudCurves.textContent = data.count.toLocaleString();
+            hudSize.textContent = `${data.width} × ${data.height}`;
+
+            // Build Desmos state expressions grouped in a folder
+            const expressions = [
+                {
+                    type: "folder",
+                    id: "bezier_folder",
+                    title: `Bézier Art (${data.count.toLocaleString()} đường cong)`,
+                    collapsed: true
+                }
+            ];
+            for (const item of data.result) {
+                expressions.push({
+                    id: item.id,
+                    latex: item.latex,
+                    color: currentColor,
+                    type: "expression",
+                    folderId: "bezier_folder"
+                });
+            }
+
+            // Set state cleanly
+            const state = {
+                version: 11,
+                graph: {
+                    viewport: {
+                        xmin: 0,
+                        xmax: data.width,
+                        ymin: 0,
+                        ymax: data.height
+                    },
+                    showGrid: document.getElementById('set-show-grid').checked,
+                    showXAxis: document.getElementById('set-show-grid').checked,
+                    showYAxis: document.getElementById('set-show-grid').checked
+                },
+                expressions: {
+                    list: expressions
+                }
+            };
+
+            calculator.setState(state, { allowUndo: false });
+
+            statusDot.className = 'status-dot';
+            hudStatus.textContent = isPlaying ? `Đang phát (${fpsSelect.value} FPS)` : 'Sẵn sàng';
+
+            // Auto download screenshot if enabled
+            if (isAutoDownload) {
+                downloadScreenshot(frameNum);
+            }
+        }
+
+        // Playback Engine
+        function startPlayback() {
+            if (isPlaying) return;
+            isPlaying = true;
+            playIcon.style.display = 'none';
+            pauseIcon.style.display = 'block';
+            btnPlay.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+
+            const getDelay = () => 1000 / parseInt(fpsSelect.value);
+
+            const loop = async () => {
+                if (!isPlaying) return;
+                let next = currentFrame + 1;
+                if (next > totalFrames) {
+                    if (isLooping) {
+                        next = 1;
+                    } else {
+                        pausePlayback();
+                        return;
+                    }
+                }
+                await renderFrame(next);
+                playInterval = setTimeout(loop, getDelay());
+            };
+
+            playInterval = setTimeout(loop, getDelay());
+        }
+
+        function pausePlayback() {
+            isPlaying = false;
+            if (playInterval) clearTimeout(playInterval);
+            playIcon.style.display = 'block';
+            pauseIcon.style.display = 'none';
+            btnPlay.style.background = 'linear-gradient(135deg, #38bdf8, #2563eb)';
+            statusDot.className = 'status-dot';
+            hudStatus.textContent = 'Tạm dừng';
+        }
+
+        function togglePlayback() {
+            if (isPlaying) pausePlayback();
+            else startPlayback();
+        }
+
+        // Event Listeners for Player Controls
+        btnPlay.addEventListener('click', togglePlayback);
+
+        btnPrev.addEventListener('click', () => {
+            pausePlayback();
+            if (currentFrame > 1) renderFrame(currentFrame - 1);
+        });
+
+        btnNext.addEventListener('click', () => {
+            pausePlayback();
+            if (currentFrame < totalFrames) renderFrame(currentFrame + 1);
+        });
+
+        btnFirst.addEventListener('click', () => {
+            pausePlayback();
+            renderFrame(1);
+        });
+
+        btnLast.addEventListener('click', () => {
+            pausePlayback();
+            renderFrame(totalFrames);
+        });
+
+        btnLoop.addEventListener('click', () => {
+            isLooping = !isLooping;
+            btnLoop.classList.toggle('active', isLooping);
+            showToast(isLooping ? 'Đã bật phát lặp lại' : 'Đã tắt phát lặp lại', 'info');
+        });
+        btnLoop.classList.toggle('active', isLooping);
+
+        let sliderDebounce;
+        frameSlider.addEventListener('input', (e) => {
+            pausePlayback();
+            const val = parseInt(e.target.value);
+            lblCurrentFrame.textContent = `Frame ${val}`;
+            clearTimeout(sliderDebounce);
+            sliderDebounce = setTimeout(() => {
+                renderFrame(val);
+            }, 80);
+        });
+
+        chkAutoDl.addEventListener('change', (e) => {
+            isAutoDownload = e.target.checked;
+        });
+
+        // Fullscreen
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Toggle Desmos Sidebar
+        document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
+            showExpressionsSidebar = !showExpressionsSidebar;
+            calculator.updateSettings({ expressions: showExpressionsSidebar });
+            showToast(showExpressionsSidebar ? 'Đã hiện thanh công thức Desmos' : 'Đã ẩn thanh công thức Desmos', 'info');
+        });
+
+        // Screenshot Export
+        function downloadScreenshot(frameNum) {
+            calculator.asyncScreenshot({
+                mode: 'contain',
+                targetPixelRatio: 2,
+                format: 'png'
+            }, (uri) => {
+                const a = document.createElement('a');
+                a.href = uri;
+                a.download = `desmos_bezier_frame_${String(frameNum).padStart(4, '0')}.png`;
+                a.click();
+            });
+        }
+
+        document.getElementById('btn-export-shot').addEventListener('click', () => {
+            downloadScreenshot(currentFrame);
+            showToast(`Đã xuất ảnh Frame ${currentFrame}`, 'success');
+        });
+
+        // Color Popover Handling
+        const colorPopover = document.getElementById('color-popover');
+        const colorBadge = document.getElementById('color-badge');
+        const btnColorPicker = document.getElementById('btn-color-picker');
+
+        btnColorPicker.addEventListener('click', (e) => {
+            e.stopPropagation();
+            colorPopover.classList.toggle('open');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!colorPopover.contains(e.target) && e.target !== btnColorPicker) {
+                colorPopover.classList.remove('open');
+            }
+        });
+
+        function changeColor(hex) {
+            currentColor = hex;
+            colorBadge.style.backgroundColor = hex;
+            document.querySelectorAll('.swatch-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.color.toLowerCase() === hex.toLowerCase());
+            });
+            // Update color in active state immediately
+            clientCache.clear();
+            renderFrame(currentFrame);
+        }
+
+        document.querySelectorAll('.swatch-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                changeColor(btn.dataset.color);
+            });
+        });
+
+        document.getElementById('custom-color-input').addEventListener('input', (e) => {
+            changeColor(e.target.value);
+        });
+
+        // Upload Modal
+        const uploadModal = document.getElementById('upload-modal');
+        const btnOpenUpload = document.getElementById('btn-open-upload');
+        const btnCloseUpload = document.getElementById('btn-close-upload');
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+        const btnSubmitUpload = document.getElementById('btn-submit-upload');
+        const uploadStatusText = document.getElementById('upload-status-text');
+        const uploadProgressBar = document.getElementById('upload-progress-bar');
+        const uploadProgressContainer = document.getElementById('upload-progress-container');
+
+        btnOpenUpload.addEventListener('click', () => {
+            uploadModal.classList.add('open');
+            selectedUploadFile = null;
+            btnSubmitUpload.disabled = true;
+            uploadStatusText.textContent = '';
+            uploadProgressContainer.style.display = 'none';
+        });
+
+        btnCloseUpload.addEventListener('click', () => uploadModal.classList.remove('open'));
+
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files && fileInput.files[0]) {
+                handleFileSelect(fileInput.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            selectedUploadFile = file;
+            uploadStatusText.textContent = `Đã chọn: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
+            btnSubmitUpload.disabled = false;
+        }
+
+        document.getElementById('input-max-frames').addEventListener('input', (e) => {
+            document.getElementById('lbl-max-frames').textContent = `${e.target.value} frames`;
+        });
+
+        btnSubmitUpload.addEventListener('click', async () => {
+            if (!selectedUploadFile) return;
+
+            pausePlayback();
+            btnSubmitUpload.disabled = true;
+            uploadProgressContainer.style.display = 'block';
+            uploadProgressBar.style.width = '30%';
+            uploadStatusText.textContent = 'Đang tải lên và trích xuất đường cong Bézier...';
+
+            const formData = new FormData();
+            formData.append('file', selectedUploadFile);
+            formData.append('max_frames', document.getElementById('input-max-frames').value);
+            formData.append('target_width', document.getElementById('select-target-width').value);
+
+            try {
+                uploadProgressBar.style.width = '60%';
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    uploadProgressBar.style.width = '100%';
+                    uploadStatusText.textContent = `Thành công! Đã xử lý ${data.total_frames} frame.`;
+                    showToast(`Tải lên thành công! Đã tạo ${data.total_frames} frame.`, 'success');
+
+                    // Reset app state
+                    totalFrames = data.total_frames;
+                    frameSlider.max = totalFrames;
+                    lblTotalFrame.textContent = `/ ${totalFrames}`;
+                    clientCache.clear();
+
+                    applyGraphBounds(data.width, data.height, document.getElementById('set-show-grid').checked);
+
+                    setTimeout(() => {
+                        uploadModal.classList.remove('open');
+                        renderFrame(1);
+                    }, 800);
+                } else {
+                    throw new Error(data.error || 'Upload error');
+                }
+            } catch (err) {
+                console.error(err);
+                uploadStatusText.textContent = `Lỗi: ${err.message}`;
+                showToast(`Lỗi xử lý file: ${err.message}`, 'error');
+                btnSubmitUpload.disabled = false;
+            }
+        });
+
+        // Reset default frames
+        document.getElementById('btn-reset-default').addEventListener('click', async () => {
+            if (!confirm('Bạn có chắc muốn khôi phục lại chuỗi frame mẫu mặc định?')) return;
+            try {
+                const res = await fetch('/api/reset-default-frames', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    totalFrames = data.total_frames;
+                    frameSlider.max = totalFrames;
+                    lblTotalFrame.textContent = `/ ${totalFrames}`;
+                    clientCache.clear();
+                    applyGraphBounds(data.width, data.height, document.getElementById('set-show-grid').checked);
+                    uploadModal.classList.remove('open');
+                    renderFrame(1);
+                    showToast('Đã khôi phục chuỗi frame mẫu mặc định!', 'success');
+                }
+            } catch (err) {
+                showToast(`Lỗi: ${err.message}`, 'error');
+            }
+        });
+
+        // Settings Modal
+        const settingsModal = document.getElementById('settings-modal');
+        document.getElementById('btn-open-settings').addEventListener('click', () => settingsModal.classList.add('open'));
+        document.getElementById('btn-close-settings').addEventListener('click', () => settingsModal.classList.remove('open'));
+        document.getElementById('btn-cancel-settings').addEventListener('click', () => settingsModal.classList.remove('open'));
+
+        // Export Modal & Desmos.com Injection
+        const exportModal = document.getElementById('export-modal');
+        const btnOpenExport = document.getElementById('btn-open-export');
+        const btnCloseExport = document.getElementById('btn-close-export');
+        const exportMetaInfo = document.getElementById('export-meta-info');
+        const exportScriptPreview = document.getElementById('export-script-preview');
+        const exportLiveScriptPreview = document.getElementById('export-live-script-preview');
+        const exportLinesCount = document.getElementById('export-lines-count');
+        const exportLatexTextarea = document.getElementById('export-latex-textarea');
+        const btnCopyDesmosScript = document.getElementById('btn-copy-desmos-script');
+        const btnCopyLiveScript = document.getElementById('btn-copy-live-script');
+        const btnCopyLatexText = document.getElementById('btn-copy-latex-text');
+        const btnDownloadJs = document.getElementById('btn-download-js');
+        const btnDownloadLiveJs = document.getElementById('btn-download-live-js');
+        const btnDownloadTxt = document.getElementById('btn-download-txt');
+        const btnDownloadStateJson = document.getElementById('btn-download-state-json');
+
+        let cachedExportData = null;
+
+        async function openExportModal() {
+            exportModal.classList.add('open');
+            exportMetaInfo.textContent = `Đang trích xuất toạ độ Frame ${currentFrame}...`;
+            exportScriptPreview.textContent = '// Đang tải script...';
+            if (exportLiveScriptPreview) exportLiveScriptPreview.textContent = '// Đang tải script...';
+            exportLatexTextarea.value = 'Đang tải phương trình...';
+
+            try {
+                const res = await fetch(`/api/export/${currentFrame}?color=${encodeURIComponent(currentColor)}`);
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Lỗi xuất toạ độ');
+
+                cachedExportData = data;
+                exportMetaInfo.textContent = `Frame ${data.frame} / ${totalFrames} | ${data.count.toLocaleString()} phương trình Bézier | Toạ độ ${data.width} × ${data.height}`;
+                exportLinesCount.textContent = `${data.count.toLocaleString()} phương trình`;
+                exportScriptPreview.textContent = data.js_script;
+                if (exportLiveScriptPreview) exportLiveScriptPreview.textContent = data.live_script;
+                exportLatexTextarea.value = data.equations.join('\n');
+
+                btnDownloadJs.href = `/api/export/${data.frame}?format=js&color=${encodeURIComponent(currentColor)}`;
+                btnDownloadJs.download = `desmos_inject_frame_${data.frame}.js`;
+
+                if (btnDownloadLiveJs) {
+                    btnDownloadLiveJs.href = `/api/export/${data.frame}?format=live_js&color=${encodeURIComponent(currentColor)}`;
+                    btnDownloadLiveJs.download = `desmos_live_sketch_frame_${data.frame}.js`;
+                }
+
+                btnDownloadTxt.href = `/api/export/${data.frame}?format=txt`;
+                btnDownloadTxt.download = `desmos_equations_frame_${data.frame}.txt`;
+
+                btnDownloadStateJson.href = `/api/export/${data.frame}?format=state_json&color=${encodeURIComponent(currentColor)}`;
+                btnDownloadStateJson.download = `desmos_state_frame_${data.frame}.json`;
+            } catch (err) {
+                exportMetaInfo.textContent = `Lỗi: ${err.message}`;
+                showToast(`Lỗi trích xuất toạ độ: ${err.message}`, 'error');
+            }
+        }
+
+        btnOpenExport.addEventListener('click', openExportModal);
+        btnCloseExport.addEventListener('click', () => exportModal.classList.remove('open'));
+        document.getElementById('hud-curves').parentElement.style.cursor = 'pointer';
+        document.getElementById('hud-curves').parentElement.addEventListener('click', openExportModal);
+
+        btnCopyDesmosScript.addEventListener('click', async () => {
+            if (!cachedExportData || !cachedExportData.js_script) return;
+            try {
+                await navigator.clipboard.writeText(cachedExportData.js_script);
+                showToast('✓ Đã sao chép mã vẽ tức thì! Mở Desmos.com -> F12 -> Dán vào Console và nhấn Enter', 'success');
+            } catch (e) {
+                const dummy = document.createElement('textarea');
+                dummy.value = cachedExportData.js_script;
+                document.body.appendChild(dummy);
+                dummy.select();
+                document.execCommand('copy');
+                dummy.remove();
+                showToast('✓ Đã sao chép mã vẽ vào bộ nhớ tạm!', 'success');
+            }
+        });
+
+        if (btnCopyLiveScript) {
+            btnCopyLiveScript.addEventListener('click', async () => {
+                if (!cachedExportData || !cachedExportData.live_script) return;
+                try {
+                    await navigator.clipboard.writeText(cachedExportData.live_script);
+                    showToast('✓ Đã sao chép mã Hoạt họa vẽ tay! Mở Desmos.com -> F12 -> Dán vào Console và nhấn Enter để xem biểu diễn!', 'success');
+                } catch (e) {
+                    const dummy = document.createElement('textarea');
+                    dummy.value = cachedExportData.live_script;
+                    document.body.appendChild(dummy);
+                    dummy.select();
+                    document.execCommand('copy');
+                    dummy.remove();
+                    showToast('✓ Đã sao chép mã Hoạt họa vào bộ nhớ tạm!', 'success');
+                }
+            });
+        }
+
+        btnCopyLatexText.addEventListener('click', async () => {
+            if (!cachedExportData || !cachedExportData.equations) return;
+            try {
+                await navigator.clipboard.writeText(cachedExportData.equations.join('\n'));
+                showToast('✓ Đã sao chép toàn bộ danh sách phương trình LaTeX!', 'success');
+            } catch (e) {
+                exportLatexTextarea.select();
+                document.execCommand('copy');
+                showToast('✓ Đã sao chép toàn bộ danh sách phương trình LaTeX!', 'success');
+            }
+        });
+
+        // ==========================================
+        // Live Sketch Animation Engine (Hoạt họa vẽ tay)
+        // ==========================================
+        const sketchDock = document.getElementById('sketch-dock');
+        const btnToggleSketch = document.getElementById('btn-toggle-sketch');
+        const sketchProgressText = document.getElementById('sketch-progress-text');
+        const sketchProgressBar = document.getElementById('sketch-progress-bar');
+        const sketchFormulaPreview = document.getElementById('sketch-formula-preview');
+        const sketchSpeedSelect = document.getElementById('sketch-speed-select');
+        const btnSketchPause = document.getElementById('btn-sketch-pause');
+        const btnSketchStop = document.getElementById('btn-sketch-stop');
+        const btnSketchRestart = document.getElementById('btn-sketch-restart');
+        const btnSketchClose = document.getElementById('btn-sketch-close');
+
+        let isLiveSketching = false;
+        let isSketchPaused = false;
+        let sketchTimer = null;
+        let sketchCurrentIndex = 0;
+        let sketchDataList = [];
+
+        async function startLiveSketch(restartFromZero = true) {
+            pausePlayback(); // Dừng phát video nếu đang phát
+
+            if (restartFromZero) {
+                sketchCurrentIndex = 0;
+            }
+
+            statusDot.className = 'status-dot busy';
+            hudStatus.textContent = 'Đang vẽ tay...';
+            sketchDock.style.display = 'flex';
+            isLiveSketching = true;
+            isSketchPaused = false;
+            btnSketchPause.textContent = '⏸ Tạm dừng';
+
+            // Lấy dữ liệu frame hiện tại
+            const data = await fetchFrame(currentFrame);
+            if (!data || !data.result || data.result.length === 0) {
+                showToast('Không có dữ liệu nét vẽ cho frame này', 'error');
+                closeLiveSketch();
+                return;
+            }
+
+            sketchDataList = data.result;
+            const total = sketchDataList.length;
+
+            if (restartFromZero) {
+                // Tự động mở thanh công thức Desmos để thấy công thức vẽ tới đâu chạy tới đó
+                showExpressionsSidebar = true;
+                calculator.updateSettings({ expressions: true });
+
+                // Xoá trắng đồ thị và thiết lập thư mục mở (collapsed: false)
+                calculator.setState({
+                    version: 11,
+                    graph: {
+                        viewport: { xmin: 0, xmax: data.width, ymin: 0, ymax: data.height },
+                        showGrid: document.getElementById('set-show-grid').checked,
+                        showXAxis: document.getElementById('set-show-grid').checked,
+                        showYAxis: document.getElementById('set-show-grid').checked
+                    },
+                    expressions: {
+                        list: [
+                            {
+                                type: 'folder',
+                                id: 'bezier_folder',
+                                title: `Bézier Art (${total.toLocaleString()} đường cong)`,
+                                collapsed: false
+                            }
+                        ]
+                    }
+                }, { allowUndo: false });
+            }
+
+            const step = () => {
+                if (!isLiveSketching || isSketchPaused) return;
+
+                const batchSize = parseInt(sketchSpeedSelect.value) || 15;
+                const nextIdx = Math.min(sketchCurrentIndex + batchSize, total);
+                const batch = [];
+
+                for (let i = sketchCurrentIndex; i < nextIdx; i++) {
+                    const item = sketchDataList[i];
+                    batch.push({
+                        id: item.id,
+                        latex: item.latex,
+                        color: currentColor,
+                        type: 'expression',
+                        folderId: 'bezier_folder'
+                    });
+                }
+
+                calculator.setExpressions(batch);
+
+                // Tự động cuộn thanh công thức Desmos theo đúng phương trình vừa vẽ
+                const expContainer = elt.querySelector('.dcg-exppanel-container') || elt.querySelector('.dcg-exppanel') || elt.querySelector('.dcg-sliding-interior');
+                if (expContainer) {
+                    expContainer.scrollTop = expContainer.scrollHeight;
+                }
+                const lastItem = elt.querySelector('.dcg-expressionitem:last-of-type');
+                if (lastItem) {
+                    lastItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+
+                // Cập nhật vị trí điểm đầu bút phát sáng (Pen tip)
+                if (nextIdx > 0 && sketchDataList[nextIdx - 1].pt) {
+                    const pt = sketchDataList[nextIdx - 1].pt;
+                    calculator.setExpression({
+                        id: 'pen_tip',
+                        latex: `(${pt[0]}, ${pt[1]})`,
+                        color: '#ff2d55',
+                        pointSize: 9,
+                        dragMode: 'NONE'
+                    });
+                }
+
+                // Cập nhật công thức đang vẽ trực tiếp lên thanh công cụ
+                if (sketchFormulaPreview && nextIdx > 0) {
+                    sketchFormulaPreview.textContent = `#${nextIdx}: ${sketchDataList[nextIdx - 1].latex}`;
+                }
+
+                sketchCurrentIndex = nextIdx;
+                const pct = Math.round((sketchCurrentIndex / total) * 100);
+                sketchProgressBar.style.width = `${pct}%`;
+                sketchProgressText.textContent = `Đang vẽ: ${sketchCurrentIndex.toLocaleString()} / ${total.toLocaleString()} nét (${pct}%)`;
+                hudCurves.textContent = sketchCurrentIndex.toLocaleString();
+
+                if (sketchCurrentIndex >= total) {
+                    // Vẽ hoàn thành
+                    finishLiveSketch();
+                    return;
+                }
+
+                const delay = batchSize === 1 ? 35 : (batchSize <= 5 ? 25 : (batchSize <= 15 ? 20 : 10));
+                sketchTimer = setTimeout(step, delay);
+            };
+
+            sketchTimer = setTimeout(step, 50);
+        }
+
+        function finishLiveSketch() {
+            isLiveSketching = false;
+            if (sketchTimer) clearTimeout(sketchTimer);
+            calculator.removeExpression({ id: 'pen_tip' });
+            statusDot.className = 'status-dot';
+            hudStatus.textContent = 'Hoàn thành vẽ';
+            sketchProgressText.textContent = `✓ Đã hoàn thành toàn bộ ${sketchDataList.length.toLocaleString()} nét!`;
+            sketchProgressBar.style.width = '100%';
+            btnSketchPause.textContent = '▶ Vẽ lại';
+            showToast(`🎉 Đã hoàn thành trình diễn vẽ tay ${sketchDataList.length.toLocaleString()} đường cong!`, 'success');
+        }
+
+        function pauseLiveSketch() {
+            if (sketchCurrentIndex >= sketchDataList.length) {
+                startLiveSketch(true);
+                return;
+            }
+            isSketchPaused = !isSketchPaused;
+            btnSketchPause.textContent = isSketchPaused ? '▶ Tiếp tục' : '⏸ Tạm dừng';
+            if (!isSketchPaused) {
+                startLiveSketch(false);
+            }
+        }
+
+        function stopLiveSketchAndShowAll() {
+            if (sketchTimer) clearTimeout(sketchTimer);
+            calculator.removeExpression({ id: 'pen_tip' });
+            isLiveSketching = false;
+            // Render full frame immediately
+            renderFrame(currentFrame);
+            sketchDock.style.display = 'none';
+            showToast('Đã dừng trình diễn và hiển thị đầy đủ hình vẽ', 'info');
+        }
+
+        function closeLiveSketch() {
+            if (sketchTimer) clearTimeout(sketchTimer);
+            calculator.removeExpression({ id: 'pen_tip' });
+            isLiveSketching = false;
+            sketchDock.style.display = 'none';
+            renderFrame(currentFrame);
+        }
+
+        btnToggleSketch.addEventListener('click', () => {
+            if (isLiveSketching) {
+                closeLiveSketch();
+            } else {
+                startLiveSketch(true);
+            }
+        });
+
+        btnSketchPause.addEventListener('click', pauseLiveSketch);
+        btnSketchStop.addEventListener('click', stopLiveSketchAndShowAll);
+        btnSketchRestart.addEventListener('click', () => startLiveSketch(true));
+        btnSketchClose.addEventListener('click', closeLiveSketch);
+
+        document.getElementById('set-canny-low').addEventListener('input', (e) => {
+            document.getElementById('lbl-canny-low').textContent = e.target.value;
+        });
+        document.getElementById('set-canny-high').addEventListener('input', (e) => {
+            document.getElementById('lbl-canny-high').textContent = e.target.value;
+        });
+
+        document.getElementById('btn-save-settings').addEventListener('click', async () => {
+            const newSettings = {
+                show_grid: document.getElementById('set-show-grid').checked,
+                bilateral: document.getElementById('set-bilateral').checked,
+                use_l2_gradient: document.getElementById('set-l2-grad').checked,
+                canny_low: parseInt(document.getElementById('set-canny-low').value),
+                canny_high: parseInt(document.getElementById('set-canny-high').value),
+                color: currentColor
+            };
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newSettings)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    clientCache.clear();
+                    calculator.updateSettings({
+                        showGrid: newSettings.show_grid,
+                        showXAxis: newSettings.show_grid,
+                        showYAxis: newSettings.show_grid
+                    });
+                    settingsModal.classList.remove('open');
+                    showToast('Đã lưu cấu hình và cập nhật lại!', 'success');
+                    renderFrame(currentFrame);
+                }
+            } catch (err) {
+                showToast(`Lỗi lưu cấu hình: ${err.message}`, 'error');
+            }
+        });
+
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlayback();
+            } else if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                pausePlayback();
+                if (currentFrame > 1) renderFrame(currentFrame - 1);
+            } else if (e.code === 'ArrowRight') {
+                e.preventDefault();
+                pausePlayback();
+                if (currentFrame < totalFrames) renderFrame(currentFrame + 1);
+            } else if (e.code === 'Home') {
+                e.preventDefault();
+                pausePlayback();
+                renderFrame(1);
+            } else if (e.code === 'End') {
+                e.preventDefault();
+                pausePlayback();
+                renderFrame(totalFrames);
+            } else if (e.key === 'g' || e.key === 'G') {
+                const chk = document.getElementById('set-show-grid');
+                chk.checked = !chk.checked;
+                calculator.updateSettings({
+                    showGrid: chk.checked,
+                    showXAxis: chk.checked,
+                    showYAxis: chk.checked
+                });
+                showToast(chk.checked ? 'Đã bật lưới toạ độ' : 'Đã tắt lưới toạ độ', 'info');
+            } else if (e.key === 'f' || e.key === 'F') {
+                document.getElementById('btn-fullscreen').click();
+            }
+        });
+
+        // Initial render on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            renderFrame(1);
+        });
+    </script>
+</body>
+</html>
